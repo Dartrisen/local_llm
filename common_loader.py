@@ -11,11 +11,12 @@ from transformers import GenerationConfig, PreTrainedModel, PreTrainedTokenizer
 @dataclass
 class CustomGenerationConfig:
     """Configuration for text generation"""
-    max_tokens: int
+    max_new_tokens: int
     temperature: float
     top_p: float
     top_k: int
     do_sample: bool
+    repetition_penalty: float
 
 
 class ModelError(Exception):
@@ -65,17 +66,26 @@ class Inference:
             inputs = {k: v.to(self.device) for k, v in inputs.items()}
 
             hf_config = GenerationConfig(
-                max_new_tokens=config.max_tokens,
+                max_new_tokens=config.max_new_tokens,
                 temperature=config.temperature,
                 top_p=config.top_p,
                 top_k=config.top_k,
+                repetition_penalty=config.repetition_penalty,
                 do_sample=config.do_sample,
+                num_beams=1
             )
             print(f"GenerationConfig: {hf_config}")
-            print(hf_config.top_k)
 
-            outputs = self.model.generate(**inputs, generation_config=hf_config)
-            result = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            outputs = self.model.generate(
+                input_ids=inputs["input_ids"],
+                attention_mask=inputs["attention_mask"],
+                generation_config=hf_config
+            )
+
+            # Extract only new tokens (ignore input length)
+            generated_tokens = outputs[0][inputs["input_ids"].shape[1]:]  # Slice out prompt tokens
+            result = self.tokenizer.decode(generated_tokens, skip_special_tokens=True)
+
             return result
 
         except Exception as ex:
