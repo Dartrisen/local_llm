@@ -3,14 +3,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Union, Optional, List, Tuple
 
-from mlx_lm import load, generate
+from mlx_lm import load, generate, stream_generate
 from mlx_lm.utils import load_config
 
 
 @dataclass
-class GenerationConfig:
+class CustomGenerationConfig:
     """Configuration for text generation"""
-    max_tokens: int = 150
+    max_tokens: int
 
 
 class MLXModelError(Exception):
@@ -48,16 +48,21 @@ class MLXInference:
         if not self.tokenizer_path.exists():
             raise MLXModelError(f"Tokenizer path does not exist: {self.tokenizer_path}")
 
-    def _load_model(self) -> Tuple:
+    def _load_model(self, lazy=True) -> Tuple:
         """Load the model and tokenizer"""
-        return load(str(self.model_path), self.model_config)
+        model = load(
+            path_or_hf_repo=str(self.model_path),
+            model_config=self.model_config,
+            lazy=lazy
+        )
+        return model
 
     @staticmethod
     def _prepare_input(text: str) -> str:
         """Prepare the input text (basic placeholder)"""
         return text.strip()
 
-    def generate(self, prompt: str, config: GenerationConfig) -> str:
+    def generate(self, prompt: str, config: CustomGenerationConfig) -> str:
         """Generate text based on the provided prompt and configuration."""
         try:
             prepared_input = self._prepare_input(prompt)
@@ -75,7 +80,7 @@ class MLXInference:
     def generate_batch(
             self,
             input_texts: List[str],
-            config: Optional[GenerationConfig] = None
+            config: Optional[CustomGenerationConfig] = None
     ) -> List[str]:
         """Generate text for multiple inputs in parallel."""
         with ThreadPoolExecutor() as executor:
@@ -85,6 +90,25 @@ class MLXInference:
             ))
         return results
 
+    def generate_streaming(self, prompt: str, config: CustomGenerationConfig):
+        """Stream text generation output in real-time using MLX-LM."""
+        try:
+            prepared_input = self._prepare_input(prompt)
+
+            response_generator = stream_generate(
+                    self.model,
+                    self.tokenizer,
+                    prepared_input,
+                    max_tokens=config.max_tokens,
+                    num_draft_tokens=16,
+                    max_kv_size=None
+            )
+            for response in response_generator:
+                yield response.text
+
+        except Exception as ex:
+            raise MLXModelError(f"Streaming generation failed: {str(ex)}")
+
     def get_model_info(self) -> dict:
         """Get basic model information"""
         return {
@@ -92,40 +116,3 @@ class MLXInference:
             "tokenizer_path": self.tokenizer_path,
             "has_config": self.model_config is not None
         }
-
-
-def read_file(file_path: str) -> str:
-    """Read input text from a file."""
-    with open(file_path, 'r', encoding='utf-8') as f:
-        return f.read()
-
-
-def write_file(file_path: str, text: str):
-    """Write generated output to a file."""
-    with open(file_path, 'w', encoding='utf-8') as f:
-        f.write(text)
-
-
-if __name__ == "__main__":
-    try:
-        model_path = ""
-        inference = MLXInference(model_path)
-
-        config = GenerationConfig(
-            max_tokens=250,
-        )
-
-        batch_inputs = [
-            "What is MVP in ecology?"
-        ]
-
-        print("\nBatch Generation:")
-        outputs = inference.generate_batch(batch_inputs, config)
-        for input_text, output_text in zip(batch_inputs, outputs):
-            print(f"\nInput: {input_text}")
-            print(f"Output: {output_text}")
-
-    except MLXModelError as e:
-        print(f"Error: {str(e)}")
-    except Exception as e:
-        print(f"Unexpected error: {str(e)}")
