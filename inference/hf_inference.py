@@ -24,10 +24,10 @@ class ModelError(Exception):
     pass
 
 
-class Inference:
+class HFInference:
     """
     A class for handling model inference with proper error handling
-    and optimized performance for Intel CPUs using Hugging Face transformers.
+    and optimized performance for non-arm CPU's using Hugging Face transformers.
     """
 
     def __init__(
@@ -39,6 +39,7 @@ class Inference:
         self.model_name_or_path = str(model_name_or_path)
         self.tokenizer_name_or_path = str(tokenizer_name_or_path) if tokenizer_name_or_path else self.model_name_or_path
         self.device = 'mps' if backends.mps.is_available() else 'cpu'
+        self.hf_config = None
 
         try:
             self.model: PreTrainedModel = AutoModelForCausalLM.from_pretrained(
@@ -72,9 +73,10 @@ class Inference:
                 top_k=config.top_k,
                 repetition_penalty=config.repetition_penalty,
                 do_sample=config.do_sample,
-                num_beams=1
+                encoder_no_repeat_ngram_size=2,
+                num_beams=4
             )
-            print(f"GenerationConfig: {hf_config}")
+            self.hf_config = hf_config
 
             outputs = self.model.generate(
                 input_ids=inputs["input_ids"],
@@ -108,17 +110,6 @@ class Inference:
         """Get basic model information"""
         return {
             "model_name_or_path": self.model_name_or_path,
-            "tokenizer_name_or_path": self.tokenizer_name_or_path
+            "tokenizer_name_or_path": self.tokenizer_name_or_path,
+            "generation_config": self.hf_config
         }
-
-
-def read_file(file_path: str) -> str:
-    """Read input text from a file."""
-    with open(file_path, 'r', encoding='utf-8') as f:
-        return f.read()
-
-
-def write_file(file_path: str, text: str):
-    """Write generated output to a file."""
-    with open(file_path, 'w', encoding='utf-8') as f:
-        f.write(text)
