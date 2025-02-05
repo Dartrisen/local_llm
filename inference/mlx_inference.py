@@ -111,8 +111,6 @@ class MLXInference:
             outputs, batch_token_count = process_batch(batch)
             yield (" ".join(outputs)), batch_token_count
 
-    from typing import Generator
-
     def generate_streaming(self, prompt: str, config: CustomGenerationConfig) -> Generator[str, None, None]:
         """Stream text generation output in real-time using MLX-LM."""
         try:
